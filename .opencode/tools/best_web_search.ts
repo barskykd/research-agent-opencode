@@ -116,3 +116,56 @@ export default tool({
     }
   },
 })
+
+export const fetch = tool({
+  description:
+    "Fetch specific URLs directly (skip search). Extracts readable text from each page with TLS fingerprinting. Supports PDF extraction via pdftotext.",
+  args: {
+    urls: tool.schema
+      .array(tool.schema.string())
+      .describe("URLs to fetch directly"),
+    maxLength: tool.schema
+      .number()
+      .optional()
+      .describe("Max content length per page in chars (default: 50000)"),
+    timeout: tool.schema
+      .number()
+      .optional()
+      .describe("Fetch timeout per page in seconds (default: 5)"),
+    output: tool.schema
+      .enum(["json", "raw", "markdown"])
+      .optional()
+      .describe("Output format (default: raw)"),
+  },
+  async execute(args) {
+    const uv = await ensureUv()
+    const script = path.join(import.meta.dir, "web_research.py")
+
+    const cmd: string[] = [uv, "run", script]
+    cmd.push("-u", ...args.urls)
+    if (args.maxLength != null) cmd.push("-m", String(args.maxLength))
+    if (args.timeout != null) cmd.push("-t", String(args.timeout))
+    if (args.output) cmd.push("-o", args.output)
+    cmd.push("-q")
+
+    const envPath = isWindows
+      ? `${process.env.USERPROFILE}\\.local\\bin;${process.env.PATH}`
+      : `${process.env.HOME}/.local/bin:${process.env.PATH}`
+
+    try {
+      const result = await Bun.$`${cmd}`
+        .env({
+          ...process.env,
+          PATH: envPath,
+          PYTHONPATH: "",
+          PYTHONIOENCODING: "utf-8",
+        })
+        .text()
+      return result.trim() || "All URLs failed to fetch"
+    } catch (e: any) {
+      const stderr = e?.stderr?.toString().trim() || ""
+      const message = e?.message || String(e)
+      return `Error: ${message}${stderr ? `\n${stderr}` : ""}`
+    }
+  },
+})
