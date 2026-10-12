@@ -37,6 +37,7 @@ If you already have an `AGENTS.md` or `opencode.json`, keep your own (append thi
 - **Non-English support** — auto-detects Japanese, Chinese, Korean and sets the appropriate DDG region
 - **Wayback Machine fallback** for paywalled pages
 - **PDF extraction** via pdftotext (poppler)
+- **Page image URLs in the report** — every page section carries an `[images] …` line (`og:image`, then `twitter:image`, then the `<img>` attributes), so a picture can be taken straight from a result
 - **Wall-clock watchdog** — hard timeout kills hung fetches on all platforms
 
 Full feature list and blocked/API-routed domain documentation in `.opencode/agents/web-searcher.md`.
