@@ -91,7 +91,7 @@ import time
 import types
 import urllib.parse
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from html import unescape
 from html.parser import HTMLParser
 from io import StringIO
@@ -2537,7 +2537,7 @@ async def _maybe_escalate(
             result.error = deepseek_failure
             if progress:
                 progress.url_result(url, False, elapsed, deepseek_failure)
-            return result
+            return replace(result, error=deepseek_failure)
         # Fall through to the browser branch below for the clearable walls.
     if render == "auto" and _BROWSER_TIER_READY is not False:
         global _BROWSER_ESCALATIONS
@@ -2558,11 +2558,10 @@ async def _maybe_escalate(
         # Both retries failed: keep the full reason in the failure record the
         # caller reports, not just in the progress line.
         result.error = deepseek_failure
+    if deepseek_failure and not result.success:
+        result = replace(result, error=deepseek_failure)
     if progress:
-        progress.url_result(
-            url, result.success, elapsed,
-            deepseek_failure or (result.error or ""),
-        )
+        progress.url_result(url, result.success, elapsed, result.error or "")
     return result
 
 
