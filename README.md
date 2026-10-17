@@ -31,9 +31,25 @@ If you already have an `AGENTS.md` or `opencode.json`, keep your own (append thi
 | `--map <URL>` | sitemap, else page links | Site coverage: list a host's URLs inside the URL's path subtree (fixed cap 100) |
 | `--cite <SEED>` | OpenAlex, Semantic Scholar | Literature expansion: citers + references for one DOI/arXiv/OpenAlex seed (25 each) |
 
+### Optional: DeepSeek Search
+
+Adds DeepSeek's in-house search index alongside DuckDuckGo — 20 extra pages per query, or 40 when DuckDuckGo is unavailable. Results merge into the same report (same sections and digest, nothing extra to parse).
+
+Off by default. Turn it on in your shell:
+
+```bash
+export WEB_RESEARCH_DEEPSEEK=1
+```
+
+The API key is read from `provider.deepseek.options.apiKey` in `~/.config/opencode/opencode.json` — the config OpenCode already uses; `DEEPSEEK_API_KEY` overrides it. Without a key the toggle prints one warning and the run continues on DuckDuckGo.
+
+Billing: $0.75 per 1,000 successful searches — one request per query; failed requests and empty results are free.
+
+The same toggle also covers page fetches: a page this machine cannot reach (DNS, connect, timeout, TLS) or that answers with an access wall is fetched by DeepSeek — instead of the browser retry in `--url`, and in place of the failed fetch in a search run. If DeepSeek also fails, Chrome runs as the last step for walls it can clear (403/418/429/5xx, CAPTCHA); DNS, connect and timeout failures stop at the static result.
+
 ## Key features
 
-- **Up to 30 requested results / 20 pages per query** via DuckDuckGo and its multi-engine backend
+- **Up to 30 requested results / 20 pages per query** (40 pages with the optional DeepSeek backend) via DuckDuckGo and its multi-engine backend
 - **Anti-bot bypass** — Scrapling with TLS fingerprinting, auto-fallback to httpx
 - **Smart extraction** — Trafilatura content-area detection (article body, not sidebars)
 - **Quality filters** — content-farm/syndication detection (F5), recency filtering on time-sensitive queries (F7), stub-page drop, cross-page deduplication
