@@ -2532,6 +2532,9 @@ async def _maybe_escalate(
             progress.message(f"  [deepseek] fetch failed ({ds_result.error}) — not rescued")
         # Chrome is the last step, but only where it can help.
         if (result.error or "") not in BROWSER_AFTER_DEEPSEEK_ERRORS:
+            # The caller reports this object's error (report NOTES, --url stderr):
+            # without this the DeepSeek reason never leaves the progress record.
+            result.error = deepseek_failure
             if progress:
                 progress.url_result(url, False, elapsed, deepseek_failure)
             return result
@@ -2551,6 +2554,10 @@ async def _maybe_escalate(
                 if progress:
                     progress.url_result(url, True, elapsed, "")
                 return browser_result
+    if deepseek_failure:
+        # Both retries failed: keep the full reason in the failure record the
+        # caller reports, not just in the progress line.
+        result.error = deepseek_failure
     if progress:
         progress.url_result(
             url, result.success, elapsed,
