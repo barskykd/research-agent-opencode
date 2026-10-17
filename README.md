@@ -1,6 +1,6 @@
 # Web Search Agent
 
-Deep web search for [OpenCode](https://opencode.ai) (v1 & v2). Fetches 30 search results and up to 20 pages per query — far beyond the typical 10-20 result limit of built-in tools — and delivers a compact digest plus a full report file you can grep.
+Deep web search for [OpenCode](https://opencode.ai) (v1 & v2). Requests up to 30 search results across several engines and fetches up to 20 pages per query — more depth than the typical 10-20 result limit of built-in tools — and delivers a compact digest plus a full report file you can grep.
 
 ## Why use it
 
@@ -27,10 +27,13 @@ If you already have an `AGENTS.md` or `opencode.json`, keep your own (append thi
 | `--med` | + PubMed, Europe PMC, OpenAlex | Medicine, clinical trials |
 | `--url` | direct fetch of one specific URL, skips search | Known-page retrieval only (never file downloads), full page text saved raw to its own report file (no quality filters) |
 | `--url-chrome` | direct fetch of one URL with real Google Chrome (provisioned repo-local into `tmp/browser/chrome/`) | Pages the cheaper tiers cannot reach — JS anti-bot gates, 403 or bot-wall responses. A fallback, never a first attempt: use it only after `--url` on that same URL clearly failed, or its automatic retry already ran. `--url` escalates to it on its own; either path provisions Chrome on first use |
+| `--since <d\|w\|m\|y>` | engine time window (primary search only) | Freshness-sensitive questions where a period is named — trades recall for recency |
+| `--map <URL>` | sitemap, else page links | Site coverage: list a host's URLs inside the URL's path subtree (fixed cap 100) |
+| `--cite <SEED>` | OpenAlex, Semantic Scholar | Literature expansion: citers + references for one DOI/arXiv/OpenAlex seed (25 each) |
 
 ## Key features
 
-- **30 results / up to 20 pages per query** via DuckDuckGo
+- **Up to 30 requested results / 20 pages per query** via DuckDuckGo and its multi-engine backend
 - **Anti-bot bypass** — Scrapling with TLS fingerprinting, auto-fallback to httpx
 - **Smart extraction** — Trafilatura content-area detection (article body, not sidebars)
 - **Quality filters** — content-farm/syndication detection (F5), recency filtering on time-sensitive queries (F7), stub-page drop, cross-page deduplication
@@ -38,6 +41,10 @@ If you already have an `AGENTS.md` or `opencode.json`, keep your own (append thi
 - **Wayback Machine fallback** for paywalled pages
 - **PDF extraction** via pdftotext, with a built-in pure-Python fallback (no poppler required)
 - **Structured sources** — RSS/Atom feeds return dated entry lists with entry URLs; Hacker News item pages return the comment thread; peer-reviewed links resolve to open-access full text (Europe PMC, OpenAlex, arXiv)
+- **Page dates in the digest** — `[YYYY-MM-DD]` from page meta/JSON-LD, `[~YYYY-MM-DD]` when heuristic, `[upd …]` for modified-only; informational, never used to drop pages
+- **Site map mode** (`--map`) — list a docs section's URLs from its sitemap (or page links), then fetch only the ones you need
+- **Citation graph** (`--cite`) — citers and references for one DOI/arXiv/OpenAlex seed, for expanding a literature search
+- **Search retry** — one retry when the search backend returns zero URLs (throttling), with a distinct failure message
 - **Page image URLs in the report** — every page section carries an `[images] …` line (`og:image`, then `twitter:image`, then the `<img>` attributes), so a picture can be taken straight from a result
 - **Wall-clock watchdog** — hard timeout kills hung fetches on all platforms
 
