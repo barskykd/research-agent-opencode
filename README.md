@@ -1,6 +1,6 @@
 # Web Search Agent
 
-Deep web search for [OpenCode](https://opencode.ai) (v1 & v2). Requests up to 30 search results across several engines and fetches up to 20 pages per query — more depth than the typical 10-20 result limit of built-in tools — and delivers a compact digest plus a full report file you can grep.
+Deep web search for [OpenCode](https://opencode.ai) (v1 & v2). Requests up to 30 search results across several engines and fetches up to 20 pages per query — more depth than the typical 10-20 result limit of built-in tools — and delivers a one-line report pointer into an indexed report file you can read or grep.
 
 ## Why use it
 
@@ -27,7 +27,7 @@ If you already have an `AGENTS.md` or `opencode.json`, keep your own (append thi
 - **Wayback Machine fallback** for paywalled pages
 - **PDF extraction** via pdftotext, with a built-in pure-Python fallback (no poppler required)
 - **Structured sources** — RSS/Atom feeds return dated entry lists with entry URLs; Hacker News item pages return the comment thread; peer-reviewed links resolve to open-access full text (Europe PMC, OpenAlex, arXiv)
-- **Page image URLs in the report** — every page section carries an `[images] …` line (`og:image`, then `twitter:image`, then the `<img>` attributes), so a picture can be taken straight from a result
+- **Page image URLs in the report** — a page with images carries one `[images] …` line under its `=== <url> ===` header (`og:image`, then `twitter:image`, then the `<img>` attributes), so a picture can be taken straight from a result
 - **Wall-clock watchdog** — hard timeout kills hung fetches on all platforms
 
 Full feature list and blocked/API-routed domain documentation in `.opencode/agents/web-searcher.md`.
