@@ -25,7 +25,7 @@ If you already have an `AGENTS.md` or `opencode.json`, keep your own (append thi
 - **Quality filters** — content-farm/syndication detection (F5), recency filtering on time-sensitive queries (F7), stub-page drop, cross-page deduplication
 - **Non-English support** — auto-detects Japanese, Chinese, Korean and sets the appropriate DDG region
 - **Wayback Machine fallback** for paywalled pages
-- **PDF extraction** via pdftotext, with a built-in pure-Python fallback (no poppler required)
+- **PDF links, on demand** — search mode lists PDF results in a `PDF LINKS` block instead of downloading them (their transfer dominates a run); `--url <link>` downloads and extracts one via pdftotext, with a built-in pure-Python fallback (no poppler required)
 - **Structured sources** — RSS/Atom feeds return dated entry lists with entry URLs; Hacker News item pages return the comment thread; peer-reviewed links resolve to open-access full text (Europe PMC, OpenAlex, arXiv)
 - **Page image URLs in the report** — a page with images carries one `[images] …` line under its `=== <url> ===` header (`og:image`, then `twitter:image`, then the `<img>` attributes), so a picture can be taken straight from a result
 - **Wall-clock watchdog** — hard timeout kills hung fetches on all platforms
