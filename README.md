@@ -36,7 +36,8 @@ If you already have an `AGENTS.md` or `opencode.json`, keep your own (append thi
 - **Quality filters** — content-farm/syndication detection (F5), recency filtering on time-sensitive queries (F7), stub-page drop, cross-page deduplication
 - **Non-English support** — auto-detects Japanese, Chinese, Korean and sets the appropriate DDG region
 - **Wayback Machine fallback** for paywalled pages
-- **PDF extraction** via pdftotext (poppler)
+- **PDF extraction** via pdftotext, with a built-in pure-Python fallback (no poppler required)
+- **Structured sources** — RSS/Atom feeds return dated entry lists with entry URLs; Hacker News item pages return the comment thread; peer-reviewed links resolve to open-access full text (Europe PMC, OpenAlex, arXiv)
 - **Page image URLs in the report** — every page section carries an `[images] …` line (`og:image`, then `twitter:image`, then the `<img>` attributes), so a picture can be taken straight from a result
 - **Wall-clock watchdog** — hard timeout kills hung fetches on all platforms
 
@@ -45,7 +46,7 @@ Full feature list and blocked/API-routed domain documentation in `.opencode/agen
 ## Requirements
 
 - Python 3.11+ (managed by `uv`; downloaded into uv's cache if needed)
-- `pdftotext` (optional — from [poppler](https://poppler.freedesktop.org/), for PDF content extraction)
+- `pdftotext` (optional — from [poppler](https://poppler.freedesktop.org/); used when present for layout-aware PDF text. Without it, a bundled pure-Python extractor handles text PDFs — scanned pages and encrypted files still yield nothing)
 
 ## License
 
