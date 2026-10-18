@@ -51,7 +51,7 @@ Full feature list and blocked/API-routed domain documentation in `.opencode/agen
 
 ### Optional: DeepSeek Search
 
-Adds DeepSeek's in-house search index alongside DuckDuckGo — 20 extra pages per query, or 40 when DuckDuckGo is unavailable. Results merge into the same report (same sections and digest, nothing extra to parse).
+Adds DeepSeek's in-house search index alongside DuckDuckGo — 20 extra pages per query, or 40 when DuckDuckGo is unavailable. Every request asks DeepSeek for the page content too, so those pages are written into the report from the API response and are **not fetched by this machine**; DuckDuckGo results are fetched as usual. A DeepSeek result whose content is missing or unusable falls back to the local fetcher — except a PDF, which is never downloaded: it stays in `PDF LINKS`, and also becomes a report page when DeepSeek returned its content.
 
 Off by default. Turn it on in your shell:
 
@@ -59,7 +59,7 @@ Off by default. Turn it on in your shell:
 export WEB_RESEARCH_DEEPSEEK=1
 ```
 
-The API key is read from `provider.deepseek.options.apiKey` in `~/.config/opencode/opencode.json` — the config OpenCode already uses; `DEEPSEEK_API_KEY` overrides it. Without a key the toggle prints one warning and the run continues on DuckDuckGo.
+The API key is read from `provider.deepseek.options.apiKey` in `~/.config/opencode/opencode.json` — the config OpenCode already uses; `DEEPSEEK_API_KEY` overrides it. Without a key the toggle prints one warning and the run continues on DuckDuckGo. `need_content` is billed exactly like a plain search request (per request, not per page), but the response takes longer to produce.
 
 ## Requirements
 
