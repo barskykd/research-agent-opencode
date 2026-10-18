@@ -1,6 +1,6 @@
 # Web Search Agent
 
-Deep web search for [OpenCode](https://opencode.ai) (v1 & v2). Requests up to 50 search results across several engines and fetches up to 20 pages per query — more depth than the typical 10-20 result limit of built-in tools — and delivers a one-line report pointer into an indexed report file you can read or grep.
+Deep web search for [OpenCode](https://opencode.ai) (v1 & v2). Requests up to 50 search results across several engines and fetches up to 20 pages per query by default — more depth than the typical 10-20 result limit of built-in tools — and delivers a one-line report pointer into an indexed report file you can read or grep.
 
 ## Why use it
 
@@ -19,15 +19,15 @@ If you already have an `AGENTS.md` or `opencode.json`, keep your own (append thi
 
 ## Key features
 
-- **Up to 50 requested results / 20 pages per query** (50 pages when DuckDuckGo is unavailable and the optional DeepSeek backend is on) via DuckDuckGo and its multi-engine backend
-- **Anti-bot bypass** — Scrapling with TLS fingerprinting, auto-fallback to httpx
+- **Up to 50 requested results / 20 DDG pages fetched per query** — plus up to 20 DeepSeek pages from the API response (50 when DuckDuckGo is unavailable), which are not fetched unless their content is missing
+- **Anti-bot bypass** — Scrapling with TLS fingerprinting; httpx fallback for DNS-failing hosts
 - **Smart extraction** — Trafilatura content-area detection (article body, not sidebars)
 - **Quality filters** — content-farm/syndication detection (F5), recency filtering on time-sensitive queries (F7), stub-page drop, cross-page deduplication
 - **Non-English support** — auto-detects Japanese, Chinese, Korean and sets the appropriate DDG region
 - **Wayback Machine fallback** for paywalled pages
 - **PDF links, on demand** — search mode lists PDF results in a `PDF LINKS` block instead of downloading them (their transfer dominates a run); `--url <link>` downloads and extracts one via pdftotext, with a built-in pure-Python fallback (no poppler required)
 - **Structured sources** — RSS/Atom feeds return dated entry lists with entry URLs; Hacker News item pages return the comment thread; peer-reviewed links resolve to open-access full text (Europe PMC, OpenAlex, arXiv)
-- **Page image URLs in the report** — a page with images carries one `[images] …` line under its `=== <url> ===` header (`og:image`, then `twitter:image`, then the `<img>` attributes), so a picture can be taken straight from a result
+- **Page image URLs in the report** — a fetched page with images carries one `[images] …` line under its `=== <url> ===` header (`og:image`, then `twitter:image`, then the `<img>` attributes), so a picture can be taken straight from a result
 - **Wall-clock watchdog** — hard timeout kills hung fetches on all platforms
 
 Full feature list and blocked/API-routed domain documentation in `.opencode/agents/web-searcher.md`.
@@ -51,15 +51,13 @@ Full feature list and blocked/API-routed domain documentation in `.opencode/agen
 
 ### Optional: DeepSeek Search
 
-Adds DeepSeek's in-house search index alongside DuckDuckGo — 20 extra pages per query, or 50 when DuckDuckGo is unavailable. Every request asks DeepSeek for the page content too, so those pages are written into the report from the API response and are **not fetched by this machine**; DuckDuckGo results are fetched as usual. A DeepSeek result whose content is missing or unusable falls back to the local fetcher — except a PDF, which is never downloaded: it stays in `PDF LINKS`, and also becomes a report page when DeepSeek returned its content.
-
 Off by default. Turn it on in your shell:
 
 ```bash
 export WEB_RESEARCH_DEEPSEEK=1
 ```
 
-The API key is read from `provider.deepseek.options.apiKey` in `~/.config/opencode/opencode.json` — the config OpenCode already uses; `DEEPSEEK_API_KEY` overrides it. Without a key the toggle prints one warning and the run continues on DuckDuckGo. `need_content` is billed exactly like a plain search request (per request, not per page), but the response takes longer to produce.
+The API key is read from `provider.deepseek.options.apiKey` in `~/.config/opencode/opencode.json` — the config OpenCode already uses; `DEEPSEEK_API_KEY` overrides it.
 
 ## Requirements
 

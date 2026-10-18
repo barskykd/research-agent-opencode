@@ -3332,6 +3332,11 @@ async def run_research_async(
                 for url, title, snippet in searcher.search(
                     config.query, config.search_results, timelimit=timelimit
                 ):
+                    if url in seen_in_search:
+                        # DeepSeek may already have contributed this URL; the
+                        # shared set is the run-wide intake guard for every
+                        # source, not just for the DeepSeek enqueue.
+                        continue
                     if global_seen_urls is not None:
                         if url in global_seen_urls:
                             continue
