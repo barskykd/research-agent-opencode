@@ -46,7 +46,7 @@ Unified tool combining search and fetch into a single optimized workflow:
 10. --cite SEED: citers + references for one paper (DOI, doi.org/arXiv URL or
    OpenAlex id), 25 per section, OpenAlex with a Semantic Scholar fallback.
 11. Optional DeepSeek backend (WEB_RESEARCH_DEEPSEEK=1, off by default): its
-   in-house search runs alongside DuckDuckGo and contributes 20 pages, or 40
+   in-house search runs alongside DuckDuckGo and contributes 20 pages, or 50
    when DuckDuckGo returns nothing. Key comes from the user's OpenCode
    config (DEEPSEEK_API_KEY overrides). Every search request asks for page
    content (need_content): a result that comes back with content is written
@@ -64,8 +64,8 @@ Usage:
     python web_research.py --map https://example.com/docs/   # List URLs in that path subtree
     python web_research.py --cite 10.1038/s41586-020-2649-2  # Citers + references for a paper
 
-(fixed tuned settings: request up to 30 results, fetch up to 20 pages,
-plain-text output; with the DeepSeek backend its 20/40 result pages arrive with
+(fixed tuned settings: request up to 50 results, fetch up to 20 pages,
+plain-text output; with the DeepSeek backend its 20/50 result pages arrive with
 their content and are not fetched here)
 """
 
@@ -586,7 +586,7 @@ class ResearchConfig:
     quiet: bool = False
     min_content_length: int = 600
     max_concurrent: int = 50  # Match default search count
-    search_results: int = 30
+    search_results: int = 50
     scientific: bool = False
     medical: bool = False
     tech: bool = False
@@ -3042,7 +3042,7 @@ class MultiSearch:
 # content, not extra report pages.
 DEEPSEEK_REQUEST_COUNT = 50   # API maximum; the request price is the same
 DEEPSEEK_HEALTHY_LIMIT = 20   # pages added while DuckDuckGo is delivering
-DEEPSEEK_FALLBACK_LIMIT = 40  # pages used when DuckDuckGo returns nothing
+DEEPSEEK_FALLBACK_LIMIT = 50  # pages used when DuckDuckGo returns nothing
 # need_content makes the API extract every result's page before answering, so
 # the search call needs real headroom: the old content-less call answered in
 # 1-3s, and 10s is too tight once text is generated for up to 50 pages.
@@ -3725,12 +3725,12 @@ async def run_research_async(
         loop = asyncio.get_running_loop()
         semaphore = asyncio.Semaphore(config.max_concurrent)
         pending: List[asyncio.Task] = []
-        # Admission budget in pages, not requests: a supplied-content page takes
-        # a slot but no network, so the DeepSeek share still fits beside DDG's
-        # fetch_count.
-        fetch_limit = config.fetch_count + (
-            DEEPSEEK_HEALTHY_LIMIT if config.deepseek else 0
-        )
+        # Separate admission budgets by cost. A supplied-content page costs no
+        # request and is always admitted; DDG/bonus pages share the fetch_count
+        # budget, and DeepSeek pages that still need a fetch get their own
+        # share so a 50-result DDG list cannot crowd them out.
+        ddg_started = 0
+        ds_started = 0
 
         async def fetch_one(job: PageJob) -> None:
             async with semaphore:
@@ -3761,7 +3761,17 @@ async def run_research_async(
             job = await fetch_queue.get()
             if job is None:
                 break
-            if fetch_limit == 0 or len(pending) < fetch_limit:
+            admitted = False
+            if job.content:
+                admitted = True
+            elif job.origin == "deepseek":
+                if ds_started < DEEPSEEK_FALLBACK_LIMIT:
+                    ds_started += 1
+                    admitted = True
+            elif config.fetch_count <= 0 or ddg_started < config.fetch_count:
+                ddg_started += 1
+                admitted = True
+            if admitted:
                 pending.append(asyncio.create_task(fetch_one(job)))
 
         if pending:

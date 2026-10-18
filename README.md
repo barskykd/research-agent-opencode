@@ -1,6 +1,6 @@
 # Web Search Agent
 
-Deep web search for [OpenCode](https://opencode.ai) (v1 & v2). Requests up to 30 search results across several engines and fetches up to 20 pages per query — more depth than the typical 10-20 result limit of built-in tools — and delivers a one-line report pointer into an indexed report file you can read or grep.
+Deep web search for [OpenCode](https://opencode.ai) (v1 & v2). Requests up to 50 search results across several engines and fetches up to 20 pages per query — more depth than the typical 10-20 result limit of built-in tools — and delivers a one-line report pointer into an indexed report file you can read or grep.
 
 ## Why use it
 
@@ -19,7 +19,7 @@ If you already have an `AGENTS.md` or `opencode.json`, keep your own (append thi
 
 ## Key features
 
-- **Up to 30 requested results / 20 pages per query** (40 pages with the optional DeepSeek backend) via DuckDuckGo and its multi-engine backend
+- **Up to 50 requested results / 20 pages per query** (50 pages when DuckDuckGo is unavailable and the optional DeepSeek backend is on) via DuckDuckGo and its multi-engine backend
 - **Anti-bot bypass** — Scrapling with TLS fingerprinting, auto-fallback to httpx
 - **Smart extraction** — Trafilatura content-area detection (article body, not sidebars)
 - **Quality filters** — content-farm/syndication detection (F5), recency filtering on time-sensitive queries (F7), stub-page drop, cross-page deduplication
@@ -36,7 +36,7 @@ Full feature list and blocked/API-routed domain documentation in `.opencode/agen
 
 | Source | What it provides | Best for |
 |--------|------------------|----------|
-| DuckDuckGo (multi-engine backend) | General web index, 30 requested results / 20 fetched pages per query | General questions and any topic without a specialist source |
+| DuckDuckGo (multi-engine backend) | General web index, 50 requested results / 20 fetched pages per query | General questions and any topic without a specialist source |
 | Hacker News | Tech community discussion, Show HN posts, launch threads | Software releases, developer opinion, startup news |
 | Stack Overflow | Programming Q&A, accepted answers, error diagnostics | Language and library specifics, bug fixes |
 | Dev.to | Developer blog posts and tutorials | Practical walkthroughs, practitioner experience |
@@ -51,7 +51,7 @@ Full feature list and blocked/API-routed domain documentation in `.opencode/agen
 
 ### Optional: DeepSeek Search
 
-Adds DeepSeek's in-house search index alongside DuckDuckGo — 20 extra pages per query, or 40 when DuckDuckGo is unavailable. Every request asks DeepSeek for the page content too, so those pages are written into the report from the API response and are **not fetched by this machine**; DuckDuckGo results are fetched as usual. A DeepSeek result whose content is missing or unusable falls back to the local fetcher — except a PDF, which is never downloaded: it stays in `PDF LINKS`, and also becomes a report page when DeepSeek returned its content.
+Adds DeepSeek's in-house search index alongside DuckDuckGo — 20 extra pages per query, or 50 when DuckDuckGo is unavailable. Every request asks DeepSeek for the page content too, so those pages are written into the report from the API response and are **not fetched by this machine**; DuckDuckGo results are fetched as usual. A DeepSeek result whose content is missing or unusable falls back to the local fetcher — except a PDF, which is never downloaded: it stays in `PDF LINKS`, and also becomes a report page when DeepSeek returned its content.
 
 Off by default. Turn it on in your shell:
 
