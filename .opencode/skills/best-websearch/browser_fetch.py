@@ -545,6 +545,409 @@ def _report_line(rec: dict) -> str:
             f"page text from line {rec.get('body_line', 3)}")
 
 
+_MCP_PROTOCOL_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
+_MCP_LATEST_PROTOCOL_VERSION = _MCP_PROTOCOL_VERSIONS[-1]
+
+
+class _McpResult:
+    """Content returned for one tools/call."""
+
+    __slots__ = ("text", "is_error")
+
+    def __init__(self, text: str, is_error: bool = False) -> None:
+        self.text = text
+        self.is_error = is_error
+
+
+class _McpTool:
+    """One MCP tool: metadata, JSON Schema, and its handler."""
+
+    __slots__ = ("name", "description", "input_schema", "handler", "annotations")
+
+    def __init__(self, name: str, description: str, input_schema: dict,
+                 handler, annotations: dict | None = None) -> None:
+        self.name = name
+        self.description = description
+        self.input_schema = input_schema
+        self.handler = handler
+        self.annotations = annotations
+
+
+def _mcp_error(msg_id, code: int, message: str) -> dict:
+    return {"jsonrpc": "2.0", "id": msg_id,
+            "error": {"code": code, "message": message}}
+
+
+def _mcp_validate(schema: dict, args) -> None:
+    """Validate arguments against the JSON Schema subset the tools declare."""
+    if args is None:
+        args = {}
+    if not isinstance(args, dict):
+        raise ValueError("arguments must be a JSON object")
+    properties = schema.get("properties") or {}
+    for name in schema.get("required") or []:
+        if name not in args:
+            raise ValueError(f"missing required argument: {name}")
+    for name, value in args.items():
+        spec = properties.get(name)
+        if spec is None:
+            if schema.get("additionalProperties") is False:
+                raise ValueError(f"unknown argument: {name}")
+            continue
+        _mcp_validate_value(name, value, spec)
+
+
+def _mcp_validate_value(name: str, value, spec: dict) -> None:
+    expected = spec.get("type")
+    if expected == "boolean" and not isinstance(value, bool):
+        raise ValueError(f"argument {name} must be a boolean")
+    if expected == "integer":
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"argument {name} must be an integer")
+        if "minimum" in spec and value < spec["minimum"]:
+            raise ValueError(f"argument {name} must be >= {spec['minimum']}")
+    if expected == "number":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"argument {name} must be a number")
+    if expected == "string":
+        if not isinstance(value, str):
+            raise ValueError(f"argument {name} must be a string")
+        enum = spec.get("enum")
+        if enum and value not in enum:
+            allowed = ", ".join(repr(v) for v in enum)
+            raise ValueError(f"argument {name} must be one of {allowed}")
+    if expected == "array":
+        if not isinstance(value, list):
+            raise ValueError(f"argument {name} must be an array")
+        if "minItems" in spec and len(value) < spec["minItems"]:
+            raise ValueError(f"argument {name} needs at least {spec['minItems']} item(s)")
+        item_spec = spec.get("items")
+        if isinstance(item_spec, dict):
+            for index, item in enumerate(value):
+                _mcp_validate_value(f"{name}[{index}]", item, item_spec)
+
+
+class _McpServer:
+    """Tools-only MCP server over the stdio transport."""
+
+    def __init__(self, name: str, version: str, instructions: str,
+                 tools: list) -> None:
+        self.name = name
+        self.version = version
+        self.instructions = instructions
+        self.tools = list(tools)
+        self._by_name = {tool.name: tool for tool in self.tools}
+
+    def handle(self, message):
+        if not isinstance(message, dict):
+            return _mcp_error(None, -32600, "invalid request: expected a JSON object")
+        method = message.get("method")
+        has_id = "id" in message
+        msg_id = message.get("id")
+        if not isinstance(method, str):
+            if has_id:
+                return _mcp_error(msg_id, -32600, "invalid request: missing method")
+            return None
+        # Notifications carry no id and never receive a response.
+        if not has_id:
+            return None
+        try:
+            if method == "initialize":
+                return self._initialize(msg_id, message.get("params") or {})
+            if method == "ping":
+                return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
+            if method == "tools/list":
+                return self._list_tools(msg_id)
+            if method == "tools/call":
+                return self._call_tool(msg_id, message.get("params") or {})
+            if method == "resources/list":
+                return {"jsonrpc": "2.0", "id": msg_id,
+                        "result": {"resources": []}}
+            if method == "resources/templates/list":
+                return {"jsonrpc": "2.0", "id": msg_id,
+                        "result": {"resourceTemplates": []}}
+            if method == "prompts/list":
+                return {"jsonrpc": "2.0", "id": msg_id, "result": {"prompts": []}}
+            if method == "logging/setLevel":
+                return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
+        except ValueError as exc:
+            return _mcp_error(msg_id, -32602, str(exc))
+        except Exception as exc:  # noqa: BLE001 — protocol boundary
+            return _mcp_error(msg_id, -32603, f"{type(exc).__name__}: {exc}")
+        return _mcp_error(msg_id, -32601, f"method not found: {method}")
+
+    def _initialize(self, msg_id, params: dict) -> dict:
+        requested = params.get("protocolVersion")
+        version = (requested if requested in _MCP_PROTOCOL_VERSIONS
+                   else _MCP_LATEST_PROTOCOL_VERSION)
+        result = {
+            "protocolVersion": version,
+            "capabilities": {"tools": {"listChanged": False}},
+            "serverInfo": {"name": self.name, "version": self.version},
+        }
+        if self.instructions:
+            result["instructions"] = self.instructions
+        return {"jsonrpc": "2.0", "id": msg_id, "result": result}
+
+    def _list_tools(self, msg_id) -> dict:
+        tools = []
+        for tool in self.tools:
+            entry = {"name": tool.name, "description": tool.description,
+                     "inputSchema": tool.input_schema}
+            if tool.annotations:
+                entry["annotations"] = tool.annotations
+            tools.append(entry)
+        return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": tools}}
+
+    def _call_tool(self, msg_id, params: dict) -> dict:
+        name = params.get("name")
+        if not isinstance(name, str) or name not in self._by_name:
+            return _mcp_error(msg_id, -32602, f"unknown tool: {name!r}")
+        tool = self._by_name[name]
+        args = params.get("arguments")
+        if args is None:
+            args = {}
+        _mcp_validate(tool.input_schema, args)
+        try:
+            outcome = tool.handler(args)
+        except Exception as exc:  # noqa: BLE001 — tool failure, not a protocol fault
+            outcome = _McpResult(f"{type(exc).__name__}: {exc}", is_error=True)
+        if isinstance(outcome, str):
+            outcome = _McpResult(outcome)
+        return {"jsonrpc": "2.0", "id": msg_id,
+                "result": {"content": [{"type": "text", "text": outcome.text}],
+                           "isError": outcome.is_error}}
+
+    def serve(self) -> int:
+        for stream in (sys.stdin, sys.stdout):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, ValueError):
+                pass
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                message = json.loads(line)
+            except json.JSONDecodeError as exc:
+                self._write(_mcp_error(None, -32700, f"parse error: {exc.msg}"))
+                continue
+            if isinstance(message, list):
+                for item in message:
+                    response = self.handle(item)
+                    if response is not None:
+                        self._write(response)
+                continue
+            response = self.handle(message)
+            if response is not None:
+                self._write(response)
+        return 0
+
+    @staticmethod
+    def _write(message: dict) -> None:
+        sys.stdout.write(json.dumps(message, ensure_ascii=False,
+                                    separators=(",", ":")) + "\n")
+        sys.stdout.flush()
+
+
+def _serve_mcp(name: str, version: str, instructions: str, tools: list) -> int:
+    return _McpServer(name, version, instructions, tools).serve()
+
+
+def _child_env() -> dict:
+    """Environment for a child CLI run: UTF-8 output, no inherited PYTHONPATH."""
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env.pop("PYTHONPATH", None)
+    return env
+
+
+def _run_script(argv: list[str], timeout: int, via_wrapper: bool = False):
+    """Run this script's CLI in a child process; return (exit, stdout, stderr).
+
+    `via_wrapper` uses browser_fetch.sh / .bat so the wrapper's Chrome provisioning
+    and static fallback stay in force. --check-chrome and --record-payload run the
+    Python file directly: neither needs a browser launch or a download.
+    """
+    script = Path(__file__).resolve()
+    command: list[str] | None = None
+    if via_wrapper:
+        if os.name == "nt":
+            bat = script.parent / "browser_fetch.bat"
+            if bat.exists():
+                command = ["cmd", "/c", str(bat), *argv]
+        else:
+            shell = script.parent / "browser_fetch.sh"
+            if shell.exists() and shutil.which("bash"):
+                command = ["bash", str(shell), *argv]
+    if command is None:
+        command = [sys.executable, str(script), *argv]
+
+    try:
+        proc = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", env=_child_env(), timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        out = exc.stdout or ""
+        err = exc.stderr or ""
+        if isinstance(out, bytes):
+            out = out.decode("utf-8", "replace")
+        if isinstance(err, bytes):
+            err = err.decode("utf-8", "replace")
+        detail = f"timed out after {timeout}s"
+        err = f"{err}\n{detail}".strip() if err else detail
+        return 124, out, err
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def _mcp_result(code: int, stdout: str, stderr: str, tolerated: tuple[int, ...] = (0,)):
+    """Format a child run as MCP content; stderr is kept for its caveats."""
+    parts = []
+    if stdout.strip():
+        parts.append(stdout.strip())
+    if stderr.strip():
+        parts.append("stderr:\n" + stderr.strip())
+    if not parts:
+        parts.append(f"(no output; exit {code})")
+    return _McpResult("\n\n".join(parts), is_error=code not in tolerated)
+
+
+def _mcp_main() -> int:
+    """Serve the browser-fetch modes as MCP tools over stdio."""
+
+    def fetch_pages(args: dict):
+        argv = list(args["urls"])
+        for key, flag in (("scroll", "--scroll"), ("screenshot", "--screenshot"),
+                          ("headful", "--headful"), ("profile_reset", "--profile-reset"),
+                          ("no_sandbox", "--no-sandbox")):
+            if args.get(key):
+                argv.append(flag)
+        for key, flag in (("wait", "--wait"), ("max_wait", "--max-wait"),
+                          ("timeout", "--timeout")):
+            if key in args:
+                argv.extend([flag, str(args[key])])
+        pages = len(args["urls"])
+        per_page = args.get("timeout", 90) + args.get("max_wait", 30) + 20
+        if args.get("scroll"):
+            per_page += 12
+        # 900 s covers first-use Chrome provisioning; each page gets its own budget.
+        timeout = 900 + per_page * pages
+        code, out, err = _run_script(argv, timeout, via_wrapper=True)
+        return _mcp_result(code, out, err)
+
+    def check_chrome(_args: dict):
+        code, out, err = _run_script(["--check-chrome"], 120)
+        # 3 (stale/absent) and 4 (unknowable) are answers, not tool failures.
+        return _mcp_result(code, out, err, tolerated=(0, 3, 4))
+
+    def record_payload(_args: dict):
+        code, out, err = _run_script(["--record-payload"], 120)
+        return _mcp_result(code, out, err)
+
+    no_args = {"type": "object", "properties": {}, "additionalProperties": False}
+    tools = [
+        _McpTool(
+            name="browser_fetch",
+            description=(
+                "Fetch one or more pages with the repo-local real Google Chrome and save "
+                "each rendered page to a report file under tmp/webresearch/. Returns one "
+                "REPORT line per page with OUTCOME: ok | blocked | error | timeout. Use "
+                "only after the static fetch has clearly failed or returned a wall, never "
+                "as the first attempt. Chrome is provisioned on demand."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "urls": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "description": "Page URLs to fetch (one Chrome launch for all).",
+                    },
+                    "wait": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "default": 8,
+                        "description": "Minimum seconds to settle after load (default 8).",
+                    },
+                    "max_wait": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "default": 30,
+                        "description": "Cap for the adaptive settle in seconds; 0 disables "
+                                       "the extension (default 30).",
+                    },
+                    "scroll": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Scroll to trigger lazy content.",
+                    },
+                    "screenshot": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Save a PNG next to each report.",
+                    },
+                    "headful": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Use a visible window (local debugging).",
+                    },
+                    "profile_reset": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Wipe the persistent browser profile before launch.",
+                    },
+                    "no_sandbox": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Launch Chrome without its sandbox (already off "
+                                       "automatically as root or without a setuid helper).",
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "default": 90,
+                        "description": "Per-page navigation budget in seconds (default 90).",
+                    },
+                },
+                "required": ["urls"],
+                "additionalProperties": False,
+            },
+            handler=fetch_pages,
+            annotations={"title": "Fetch pages with real Google Chrome",
+                         "openWorldHint": True},
+        ),
+        _McpTool(
+            name="check_chrome",
+            description=(
+                "Report the provisioned Chrome payload version against Google's stable "
+                "channel. Downloads nothing. Exit 0 current, 3 stale/absent, 4 unknowable."
+            ),
+            input_schema=no_args,
+            handler=check_chrome,
+            annotations={"title": "Check Chrome payload freshness", "readOnlyHint": True},
+        ),
+        _McpTool(
+            name="record_payload",
+            description=(
+                "Write the Chrome payload freshness marker after a provisioning run "
+                "(wrapper-internal; does not download or launch Chrome)."
+            ),
+            input_schema=no_args,
+            handler=record_payload,
+            annotations={"title": "Record Chrome payload version", "idempotentHint": True},
+        ),
+    ]
+    return _serve_mcp(
+        "browser-fetch",
+        "1.0.0",
+        "Real-Google-Chrome page fetch for pages the static fetch cannot reach. "
+        "Prefer the ordinary static fetch first; force this tier only after that fails "
+        "or returns a wall. Read each report's OUTCOME line before using its text.",
+        tools,
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         prog="browser_fetch.py",
@@ -579,7 +982,13 @@ def main() -> int:
                          "root, or when the Linux chrome-sandbox helper is not setuid root)")
     ap.add_argument("--timeout", type=int, default=90, metavar="N",
                     help="Per-page budget in seconds (default 90)")
+    ap.add_argument("--mcp", action="store_true",
+                    help="Run as a stdio MCP server instead of the CLI (JSON-RPC on "
+                         "stdin/stdout; one tool per fetch mode)")
     args = ap.parse_args()
+
+    if args.mcp:
+        return _mcp_main()
 
     if args.check_chrome:
         return _check_chrome()
